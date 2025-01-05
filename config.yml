@@ -1,0 +1,13 @@
+path_model: 'model/model.pkl'
+
+path_data: 'data/data.zip'
+
+db_path: 'data/database.db'
+
+predict_endpoint: 'http://localhost:8000/predict/'
+
+random_state: 42
+
+num_features: ['abnormal_period', 'hour']
+
+cat_features: ['weekday', 'month']
