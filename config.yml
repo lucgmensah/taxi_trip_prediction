@@ -1,13 +1,17 @@
-path_model: 'model/model.pkl'
-
-path_data: 'data/data.zip'
-
-db_path: 'data/database.db'
-
 predict_endpoint: 'http://localhost:8000/predict/'
 
-random_state: 42
-
 num_features: ['abnormal_period', 'hour']
-
 cat_features: ['weekday', 'month']
+
+paths:
+  # data: ./data/wine-quality.csv
+  path_data: ./data/data.zip
+  db_path: ./data/database.db
+  mlruns: ./mlruns
+mlflow:
+  model_name: taxi_trip_duration_prediction
+  model_version: 1
+  experiment_name: taxi_trip_duration_prediction
+ml:
+  target_name: trip_duration
+  random_state: 42
