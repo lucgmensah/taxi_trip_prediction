@@ -1,71 +1,71 @@
 from fastapi import FastAPI, HTTPException
+import pandas as pd
 import uvicorn
 
-from pydantic import BaseModel, PrivateAttr, Field, PositiveFloat, computed_field
+from pydantic import BaseModel, conint
+
+from db import create_connection, create_table, get_all_predictions, insert_prediction
+from train import perform_predict
+import common as common
+
+db_path = 'data/database.db'
 
 app = FastAPI()
 
+# Creer la connexion a la base de donnees
+conn = create_connection(db_path)
+create_table(conn)
 
-class Item(BaseModel):
-    name: str
-    price: PositiveFloat
-    # different options for fields on models:
-    # https://docs.pydantic.dev/latest/api/fields/
-    # lt: If set, value must be less than this. Only applicable to numbers.
-    tax: PositiveFloat | None = Field(None, lt=1.0)
 
-    @computed_field
-    def price_with_tax(self) -> float:
-        coef_tax = (1 + self.tax) if self.tax else 1
-        return self.price * coef_tax
-
-# Initialized every time the server is run
-items = {
-    1: Item(name="item 1", price=1.0, tax=0.2),
-    2: Item(name="item 2", price=3.0),
-    3: Item(name="item 3", price=5.0, tax=0.05)
-}
-
+class TimeExpected(BaseModel):
+    hour: conint(ge=0, le=23)  # Hour must be between 0 and 23
+    abnormal_period: conint(ge=0, le=1)  # Accept 0 or 1
+    weekday: conint(ge=0, le=6)  # Weekday must be between 0 and 6
+    month: conint(ge=1, le=12)  # Month must be between 1 and 12
+    prediction: float = None
+    
 
 @app.get("/")
 def root():
-    return {"message": "Hello!"}
+    hour = 12
+    abnormal_period = 1
+    weekday = 3
+    month = 12
+    
+    data = {
+        'hour': hour,
+        'abnormal_period': abnormal_period,
+        'weekday': weekday,
+        'month': month
+    }
+    prediction = perform_predict(pd.DataFrame([data]))
+    
+    # Convert the prediction to minutes
+    prediction = round(prediction / 60, 1)
+    
+    return {"message": "Hello World", "prediction (en minutes)": prediction}    
 
 
-@app.get("/items/list")
-def read_items():
-    return items
+@app.get("/predictions/")
+async def get_predictions():
+    predictions = get_all_predictions(conn)
+    return {"predictions": predictions}
 
 
-@app.get("/items/{item_id}")
-def read_item(item_id: int):
-
-    if item_id not in items:
-        raise HTTPException(status_code=404, detail="Item not found")
-
-    return {"item_id": item_id, "item": items[item_id]}
-
-
-@app.put("/items/{item_id}")
-# item is a request payload
-def update_item(item_id: int, item: Item):
-
-    if item_id not in items:
-        raise HTTPException(status_code=404, detail="Item not found")
-
-    items[item_id] = item
-    return {"item_id": item_id, "item": item}
-
-
-@app.post("/items/")
-async def create_item(item: Item):
-
-    # define id for the new item
-    item_id = max(items.keys()) + 1 if len(items) != 0 else 1
-    items.update({item_id: item})
-    return {"item_id": item_id, "item": item}
+@app.post("/predict/")
+async def predict_trip_duration(time: TimeExpected):
+    try:
+        prediction = perform_predict(pd.DataFrame([time.dict()]))
+        
+        # Save the prediction in the database
+        insert_prediction(conn, time.hour, time.abnormal_period, time.weekday, time.month, prediction)
+        
+        return {"prediction": prediction, "data": time}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Prediction failed: {str(e)}")
 
 
 if __name__ == '__main__':
+    
     uvicorn.run("main:app", host="0.0.0.0",
                 port=8000, reload=True)
