@@ -27,25 +27,18 @@ Based on individual trip attributes, the duration of the trip should be predicte
 * `trip_duration` - duration of the trip in seconds (**target variable**)
 """
 
-
-import pickle
 import pandas as pd
 import numpy as np
-import os
-from sklearn.pipeline import Pipeline
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import train_test_split
 import mlflow
-
+from sklearn.pipeline import Pipeline
 from sklearn.linear_model import Ridge
+from sklearn.compose import ColumnTransformer
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
 
 import common as common
-
 # Gobal variables
-path_model = 'model/model.pkl'
-
 DATA_PATH = common.CONFIG['paths']['path_data']
 DIR_MLRUNS = common.CONFIG['paths']['mlruns']
 
@@ -69,6 +62,7 @@ def load_data():
 
 def transform_target(y):
     return np.log1p(y).rename('log_'+y.name)
+
 
 def inverse_transform_target(y):
     return np.expm1(y)
@@ -132,6 +126,26 @@ def perform_fitting_model(model, X_train, y_train, X_test, y_test):
     return results
 
 
+def perform_predict(X: pd.DataFrame):
+    #load the model
+    print("#"*20)
+    print("Load model from the model registry")
+    model_uri = f"models:/{MODEL_NAME}/{MODEL_VERSION}"
+    print(f"Model URI: {model_uri}")
+    model = mlflow.pyfunc.load_model(model_uri=model_uri)
+    
+    input_data = X.astype({
+        "hour": np.int32,
+        "abnormal_period": np.int32,
+        "weekday": np.int32,
+        "month": np.int32
+    })
+    
+    prediction = model.predict(input_data)
+    prediction = inverse_transform_target(pd.Series(prediction))[0]
+    
+    return prediction
+
 
 if __name__ == '__main__':
     
@@ -140,15 +154,12 @@ if __name__ == '__main__':
     np.random.seed(RANDOM_STATE)
     
     X, y = load_data()
-    
     X_train, y_train, X_test, y_test = perform_preprocessing(X, y)
     
     exp_name = "nyc_taxi_trip_duration"
-    
     mlflow.set_experiment(exp_name)
     
     run_name = "Ridge"
-    k = 0
     best_score = float('inf')
     best_run_id = None
     
@@ -174,3 +185,5 @@ if __name__ == '__main__':
             best_run_id = run.info.run_id
         print(f"rmse: {results.metrics['root_mean_squared_error']}")
         print(f"r2: {results.metrics['r2_score']}")
+        
+    # register_model(best_run_id)
